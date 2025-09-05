@@ -22,7 +22,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 
 
-def getMovieRatings(user):
+def get_movie_ratings(user):
     ratings = {}
     page = 1
 
@@ -59,9 +59,42 @@ def getMovieRatings(user):
 
     return ratings
 
+def get_users(movie):
+    users = []
+    page = 1
+
+    while True:
+        if page == 1:
+            url = f'https://letterboxd.com/film/{movie}/reviews/by/activity/'
+        else:
+            url = f'https://letterboxd.com/film/{movie}/reviews/by/activity/page/{page}/'
+
+        
+
+        html_text = requests.get(url).text
+        soup = BeautifulSoup(html_text, 'html.parser')
+
+        reviews = soup.select('div.listitem article')
+
+        if not reviews:
+            break  # no more movies, exit loop
+
+        for div in reviews:
+            # Find the avatar link, extract username from href
+            user_link = div.select_one('a.avatar')
+            if user_link:
+                username = user_link['href'].strip('/').split('/')[0]
+                users.append(username)
+        
+        page += 1
+        sleep(0.1)  # polite delay between pages
+
+    return users
 
 
-if __name__ == '__main__':
-    # Example usage:
-    ratings = getMovieRatings('enesidemo')
-    print(ratings)
+#ratings = get_movie_ratings('enesidemo')
+#print(ratings)
+
+#users = get_users('barbie')
+#print(users)
+    
