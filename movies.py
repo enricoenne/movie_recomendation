@@ -23,8 +23,9 @@ import pandas as pd
 
 
 def get_movie_ratings(user):
-    ratings = {}
+    data = []
     page = 1
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     while True:
         if page == 1:
@@ -32,7 +33,7 @@ def get_movie_ratings(user):
         else:
             url = f'https://letterboxd.com/{user}/films/page/{page}/'
 
-        html_text = requests.get(url).text
+        html_text = requests.get(url, headers=headers).text
         soup = BeautifulSoup(html_text, 'html.parser')
 
         movie_items = soup.select('li.griditem')
@@ -41,6 +42,7 @@ def get_movie_ratings(user):
 
         for li in movie_items:
             title = li.select_one('img')['alt']
+            slug = li.select_one('.react-component')['data-item-slug']
             rating_span = li.select_one('span.rating')
             if rating_span:
                 classes = rating_span.get('class', [])
@@ -48,20 +50,22 @@ def get_movie_ratings(user):
                 if rated_class:
                     score = int(rated_class[0].split('-')[-1])
                 else:
-                    score = None
+                    score = 0
             else:
-                score = None
+                score = 0
 
-            ratings[title] = score
+            data.append({"movie": slug, "rating": score})
 
         page += 1
         sleep(0.1)  # polite delay between pages
 
-    return ratings
+    return data
 
-def get_users(movie):
-    users = []
+
+def get_users_ratings(movie):
+    data = []
     page = 1
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     while True:
         if page == 1:
@@ -69,27 +73,118 @@ def get_users(movie):
         else:
             url = f'https://letterboxd.com/film/{movie}/reviews/by/activity/page/{page}/'
 
-        
-
-        html_text = requests.get(url).text
+        html_text = requests.get(url, headers=headers).text
         soup = BeautifulSoup(html_text, 'html.parser')
 
         reviews = soup.select('div.listitem article')
-
         if not reviews:
-            break  # no more movies, exit loop
+            break  
 
-        for div in reviews:
-            # Find the avatar link, extract username from href
-            user_link = div.select_one('a.avatar')
-            if user_link:
-                username = user_link['href'].strip('/').split('/')[0]
-                users.append(username)
-        
+        for review in reviews:
+            # username
+            user_link = review.select_one('a.avatar')
+            username = user_link['href'].strip('/').split('/')[0] if user_link else None
+
+            # rating
+            rating_span = review.select_one('span.rating')
+            rating = 0
+            if rating_span:
+                classes = rating_span.get('class', [])
+                rated_class = [c for c in classes if c.startswith('rated-')]
+                if rated_class:
+                    rating = int(rated_class[0].split('-')[-1])
+
+            data.append({"user": username, "rating": rating})
+
         page += 1
-        sleep(0.1)  # polite delay between pages
+        sleep(0.1)
 
-    return users
+    return data
+
+
+def movie_search(movie, df):
+    
+    movie_ratings = get_users_ratings(movie)
+
+    if movie not in df.columns:
+        df[movie] = pd.NA
+    
+    for entry in movie_ratings:
+        user = entry["user"]
+        rating = entry["rating"]
+        
+        if user not in df.index:
+            df.loc[user] = pd.NA
+        
+        df.at[user, movie] = rating
+
+def movie_search_sparse(movie, df):
+    """
+    Add all user ratings for a specific movie to the sparse DataFrame.
+    
+    movie: string, movie slug
+    df: sparse DataFrame (users x movies)
+    """
+    # Step 1: get all user ratings for the movie
+    movie_ratings = get_users_ratings(movie)  # returns list of {"user": ..., "rating": ...}
+    
+    # Step 2: ensure the movie column exists
+    if movie not in df.columns:
+        df[movie] = 0  # missing ratings = 0
+    
+    # Step 3: ensure user rows exist and fill ratings
+    for entry in movie_ratings:
+        user = entry["user"]
+        rating = entry["rating"]
+        
+        if user not in df.index:
+            df.loc[user] = 0  # missing ratings = 0
+        
+        df.at[user, movie] = rating
+
+def user_search(user, df):
+
+    user_ratings = get_movie_ratings(user)
+
+    user_df = pd.DataFrame(user_ratings)
+
+    # if the movie column doesn't exit, it adds it
+    for movie in user_df['movie']:
+        if movie not in df.columns:
+            df[movie] = pd.NA
+
+    if user not in df.index:
+        df.loc[user] = pd.NA
+
+    for _, row in user_df.iterrows():
+        df.at[user, row["movie"]] = row["rating"]
+
+def user_search_sparse(user, df):
+    """
+    Add a user's ratings to the sparse DataFrame.
+    
+    user: string, username
+    df: sparse DataFrame (users x movies)
+    """
+    # Step 1: get the user's ratings
+    user_ratings = get_movie_ratings(user)  # returns list of {"movie": slug, "rating": int}
+    
+    user_df = pd.DataFrame(user_ratings)
+
+    # if the movie column doesn't exit, it adds it
+    for movie in user_df['movie']:
+        if movie not in df.columns:
+            df[movie] = 0
+
+    if user not in df.index:
+        df.loc[user] = 0
+
+    for entry in user_ratings:
+        movie = entry["movie"]
+        rating = entry["rating"]
+
+        # fill in the rating
+        df.at[user, movie] = rating
 
 
 #ratings = get_movie_ratings('enesidemo')
