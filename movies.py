@@ -142,6 +142,8 @@ def movie_search_sparse(movie, df):
         
         df.at[user, movie] = rating
 
+    return df
+
 def user_search(user, df):
 
     user_ratings = get_movie_ratings(user)
@@ -159,33 +161,56 @@ def user_search(user, df):
     for _, row in user_df.iterrows():
         df.at[user, row["movie"]] = row["rating"]
 
+def user_search_sparse_doesntworkonemptydf(user, df):
+    user_ratings = get_movie_ratings(user)  # list of {"movie": ..., "rating": ...}
+    
+    # Build a temporary DataFrame for this user
+    temp_df = pd.DataFrame({entry["movie"]: [entry["rating"]] for entry in user_ratings},
+                           index=[user],
+                           dtype = 'int8')
+    
+    # Add missing columns to main df
+    for col in temp_df.columns:
+        if col not in df.columns:
+            df[col] = 0  # sparse int8 column
+    
+    # Align columns and concatenate
+    temp_df = temp_df.reindex(columns=df.columns, fill_value=0)
+    
+    # Add user row (or overwrite if exists)
+    df = pd.concat([df.drop(user, errors='ignore'), temp_df])
+
 def user_search_sparse(user, df):
-    """
-    Add a user's ratings to the sparse DataFrame.
-    
-    user: string, username
-    df: sparse DataFrame (users x movies)
-    """
-    # Step 1: get the user's ratings
-    user_ratings = get_movie_ratings(user)  # returns list of {"movie": slug, "rating": int}
-    
-    user_df = pd.DataFrame(user_ratings)
+    user_ratings = get_movie_ratings(user)
 
-    # if the movie column doesn't exit, it adds it
-    for movie in user_df['movie']:
+    movies = [r['movie'] for r in user_ratings]
+    scores = [r["rating"] for r in user_ratings]
+
+    for movie in movies:
         if movie not in df.columns:
-            df[movie] = 0
+            df[movie] = pd.Series([0]*len(df), index=df.index, dtype=pd.SparseDtype("int8", 0))
+    
+    # create a dense row first
+    dense_row = pd.Series(0, index=df.columns, dtype="int8")
 
-    if user not in df.index:
-        df.loc[user] = 0
+    # fill in ratings
+    for m, s in zip(movies, scores):
+        dense_row[m] = s
 
-    for entry in user_ratings:
-        movie = entry["movie"]
-        rating = entry["rating"]
+    # convert dense row to sparse
+    sparse_row = dense_row.astype(pd.SparseDtype("int8", 0))
 
-        # fill in the rating
-        df.at[user, movie] = rating
+    # drop old user row if exists
+    if user in df.index:
+        df = df.drop(user)
 
+    # append new row
+    df = pd.concat([df, pd.DataFrame([sparse_row], index=[user])])
+
+    for col in df.columns:
+        df[col] = df[col].astype(pd.SparseDtype("int8", 0))
+
+    return df
 
 #ratings = get_movie_ratings('enesidemo')
 #print(ratings)
