@@ -61,7 +61,6 @@ def get_movie_ratings(user):
 
     return data
 
-
 def get_users_ratings(movie):
     data = []
     page = 1
@@ -100,7 +99,6 @@ def get_users_ratings(movie):
         sleep(0.1)
 
     return data
-
 
 def movie_search(movie, df):
     
@@ -212,9 +210,65 @@ def user_search_sparse(user, df):
 
     return df
 
+def get_movie_metadata(movie):
+    metadata = {}
+    year = None
+    mins = None
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    url = f'https://letterboxd.com/film/{movie}/'
+
+    html_text = requests.get(url, headers=headers).text
+    soup = BeautifulSoup(html_text, 'html.parser')
+
+    year_tag = soup.select_one("span.releasedate a")
+    if year_tag:
+        year = int(year_tag.text.strip())
+    metadata['year'] = year
+
+    mins_tag = soup.select_one("p.text-link.text-footer")
+    if mins_tag:
+        text = mins_tag.text.strip()
+        # Extract the number before "mins"
+
+        match = re.search(r"(\d+)\s*mins", text)
+        if match:
+            mins = int(match.group(1))
+    metadata['mins'] = mins
+
+    genres = []
+    for a in soup.select("div.text-sluglist.capitalize a.text-slug"):
+        href = a.get("href", "")
+        if href.startswith("/films/genre/"):
+            slug = href.replace("/films/genre/", "").strip("/")  # remove /actor/ and trailing slash
+            genres.append(slug)
+    metadata['genres'] = genres
+
+    directors = []
+    for a in soup.select("p.credits span.creatorlist a.contributor"):
+        href = a.get("href", "")
+        if href.startswith("/director/"):
+            slug = href.replace("/director/", "").strip("/")  # remove /director/ and slashes
+            name_tag = a.select_one("span.prettify")
+            name = name_tag.text.strip() if name_tag else None
+            directors.append(slug)
+    metadata['directors'] = directors
+
+    actors = []
+    for a in soup.select("div.cast-list a.text-slug"):
+        href = a.get("href", "")
+        if href.startswith("/actor/"):
+            slug = href.replace("/actor/", "").strip("/")  # remove /actor/ and trailing slash
+            actors.append(slug)
+    metadata['actors'] = actors
+
+    return metadata
+
+
 #ratings = get_movie_ratings('enesidemo')
 #print(ratings)
 
 #users = get_users('barbie')
 #print(users)
-    
+
