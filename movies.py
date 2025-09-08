@@ -14,13 +14,9 @@ import json
 from time import time
 from time import sleep, time
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-
 import pandas as pd
 
+import re
 
 def get_movie_ratings(user):
     data = []
